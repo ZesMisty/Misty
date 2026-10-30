@@ -1,27 +1,34 @@
+--s
 local src_url = "https://api.luarmor.net/files/v4/loaders/2ba34c68de2188444e8adc5398f89e89.lua"
 local slow_s = 12
 local long_s = 60
-local panel_h = 234
+local card_w = 340
+local card_h = 128
+local panel_y = 120
+local panel_h = 150
+local open_h = panel_y + panel_h + 16
+local pad = 18
 
 local tween_svc = game:GetService("TweenService")
 local lighting = game:GetService("Lighting")
+local http_svc = game:GetService("HttpService")
 local env = getgenv()
 
-local family = "rbxasset://fonts/families/Inter.json"
+local family = "rbxasset://fonts/families/Roboto.json"
 local white = Color3.new(1, 1, 1)
-local ink = Color3.fromRGB(245, 248, 252)
-local dim = Color3.fromRGB(166, 178, 192)
-local faint = Color3.fromRGB(116, 128, 142)
 local accent = Color3.fromRGB(132, 172, 208)
-local amber = Color3.fromRGB(240, 192, 108)
-local red = Color3.fromRGB(255, 108, 100)
+local deep = Color3.fromRGB(84, 112, 168)
+local tint = Color3.fromRGB(20, 24, 31)
+local amber = Color3.fromRGB(255, 207, 90)
+local red = Color3.fromRGB(255, 96, 88)
+local soft = 0.35
+local mute = 0.6
 
-local faq = {
-    { "Slow or unstable internet", "Mist is a large script and has to come through Luarmor. On a weak connection, or behind a VPN or proxy, that can take a minute or more." },
-    { "Luarmor is slow or down", "The servers at api.luarmor.net and cdn.luarmor.net can be busy or briefly unavailable. Wait a little, then run the script again." },
-    { "Something is blocking the connection", "A firewall, antivirus or DNS filter can block those hosts. Try another network, or allow Roblox through." },
-    { "The key is not accepted", "Check that script_key is set to your own key before the loader runs. A wrong or expired key stops Mist from loading." },
-    { "Still stuck?", "Hide this window and run the script again. If it keeps happening, send the stage and time shown below to support." },
+local tones = {
+    pending = Color3.fromRGB(150, 158, 170),
+    ok = Color3.fromRGB(72, 208, 120),
+    warn = amber,
+    bad = red,
 }
 
 local function new(class, props, parent)
@@ -45,12 +52,71 @@ local function text(parent, props)
     props.FontFace = Font.new(family, props.weight or Enum.FontWeight.Regular)
     props.weight = nil
     props.BackgroundTransparency = 1
-    props.TextColor3 = props.TextColor3 or ink
+    props.TextColor3 = props.TextColor3 or white
     return new("TextLabel", props, parent)
 end
 
 local function gap(parent, px, order)
     return new("Frame", { Size = UDim2.new(1, 0, 0, px), BackgroundTransparency = 1, LayoutOrder = order }, parent)
+end
+
+local function rim(inst, lit)
+    local line = new("UIStroke", {
+        Color = white,
+        Thickness = 1,
+        ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+    }, inst)
+    new("UIGradient", {
+        Rotation = 60,
+        Transparency = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, lit),
+            NumberSequenceKeypoint.new(0.35, 0.9),
+            NumberSequenceKeypoint.new(0.7, 0.94),
+            NumberSequenceKeypoint.new(1, lit + (1 - lit) * 0.45),
+        }),
+    }, line)
+end
+
+local function glow(parent, color, x, y, px)
+    local spot = new("Frame", {
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        Position = UDim2.fromScale(x, y),
+        Size = UDim2.fromOffset(px, px),
+        BackgroundTransparency = 1,
+    }, parent)
+    for i = 0, 13 do
+        local r = 1 - (i / 14) ^ 0.6
+        local ring = new("Frame", {
+            AnchorPoint = Vector2.new(0.5, 0.5),
+            Position = UDim2.fromScale(0.5, 0.5),
+            Size = UDim2.fromScale(r, r),
+            BackgroundColor3 = color,
+            BackgroundTransparency = 0.978,
+        }, spot)
+        new("UICorner", { CornerRadius = UDim.new(1, 0) }, ring)
+    end
+end
+
+local function make_shadow(parent)
+    local group = new("CanvasGroup", {
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        Position = UDim2.new(0.5, 0, 0.5, 14),
+        Size = UDim2.new(1, 100, 1, 100),
+        BackgroundTransparency = 1,
+        GroupTransparency = 1,
+        ZIndex = 1,
+    }, parent)
+    for i = 0, 8 do
+        local layer = new("Frame", {
+            AnchorPoint = Vector2.new(0.5, 0.5),
+            Position = UDim2.fromScale(0.5, 0.5),
+            Size = UDim2.new(1, -92 + i * 10, 1, -92 + i * 10),
+            BackgroundColor3 = Color3.new(0, 0, 0),
+            BackgroundTransparency = 0.982,
+        }, group)
+        new("UICorner", { CornerRadius = UDim.new(0, 24 + i * 5) }, layer)
+    end
+    return group
 end
 
 local function load_logo(mark)
@@ -72,56 +138,67 @@ local function load_logo(mark)
     mark.Image = getcustomasset(path)
 end
 
-local function add_faq(list)
-    for i, item in ipairs(faq) do
-        local row = new("Frame", {
-            Size = UDim2.new(1, 0, 0, 0),
-            AutomaticSize = Enum.AutomaticSize.Y,
-            BackgroundTransparency = 1,
-            LayoutOrder = i * 2,
-        }, list)
-        new("UIPadding", { PaddingTop = UDim.new(0, 11), PaddingBottom = UDim.new(0, 11) }, row)
-        new("UIListLayout", { Padding = UDim.new(0, 3), SortOrder = Enum.SortOrder.LayoutOrder }, row)
-        text(row, {
-            Text = item[1],
-            TextSize = 13,
-            weight = Enum.FontWeight.Medium,
-            TextXAlignment = Enum.TextXAlignment.Left,
-            Size = UDim2.new(1, 0, 0, 16),
-            LayoutOrder = 1,
-        })
-        text(row, {
-            Text = item[2],
-            TextSize = 12,
-            TextColor3 = dim,
-            TextWrapped = true,
-            TextXAlignment = Enum.TextXAlignment.Left,
-            TextYAlignment = Enum.TextYAlignment.Top,
-            Size = UDim2.new(1, 0, 0, 0),
-            AutomaticSize = Enum.AutomaticSize.Y,
-            LayoutOrder = 2,
-        })
-        if i < #faq then
-            new("Frame", {
-                Size = UDim2.new(1, 0, 0, 1),
-                BackgroundColor3 = white,
-                BackgroundTransparency = 0.92,
-                LayoutOrder = i * 2 + 1,
-            }, list)
-        end
+local function read_json(res)
+    local ok, data = pcall(http_svc.JSONDecode, http_svc, res.Body)
+    if ok and type(data) == "table" then
+        return data
     end
 end
 
+local function read_luarmor(res)
+    local data = read_json(res)
+    if not data then
+        return "warn", "unreadable reply", true
+    end
+    if not data.active then
+        return "bad", tostring(data.message or "offline")
+    end
+    if data.warning then
+        return "warn", tostring(data.warning_message or "warning")
+    end
+    return "ok", "online"
+end
+
+local function read_reach(res, ms)
+    local code = res.StatusCode
+    if code == 403 or code == 429 then
+        return "warn", "blocked, HTTP " .. code
+    end
+    if code >= 500 then
+        return "bad", "server error, HTTP " .. code
+    end
+    return "ok", "reachable, " .. ms .. " ms"
+end
+
+local function read_cloudflare(res)
+    local data = read_json(res)
+    if not (data and data.incidents) then
+        return "warn", "unreadable reply", true
+    end
+    local live = data.incidents[1]
+    if not live then
+        return "ok", "no active incident"
+    end
+    local severe = live.impact == "major" or live.impact == "critical"
+    return severe and "bad" or "warn", tostring(live.name)
+end
+
+local checks = {
+    { "Luarmor", "https://luarmor.net/status/", read_luarmor },
+    { "Luarmor API", "https://api.luarmor.net/", read_reach },
+    { "Luarmor CDN", "https://cdn.luarmor.net/", read_reach },
+    { "Cloudflare", "https://www.cloudflarestatus.com/api/v2/summary.json", read_cloudflare },
+}
+
 local function make_panel(parent)
     local frame = new("Frame", {
-        Size = UDim2.new(1, 0, 0, 0),
+        Position = UDim2.fromOffset(pad, panel_y),
+        Size = UDim2.new(1, -pad * 2, 0, 0),
         BackgroundTransparency = 1,
         ClipsDescendants = true,
-        LayoutOrder = 10,
     }, parent)
     new("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder }, frame)
-    gap(frame, 18, 1)
-    local head = new("Frame", { Size = UDim2.new(1, 0, 0, 18), BackgroundTransparency = 1, LayoutOrder = 2 }, frame)
+    local head = new("Frame", { Size = UDim2.new(1, 0, 0, 16), BackgroundTransparency = 1, LayoutOrder = 1 }, frame)
     local dot = new("Frame", {
         Size = UDim2.fromOffset(7, 7),
         AnchorPoint = Vector2.new(0, 0.5),
@@ -130,46 +207,96 @@ local function make_panel(parent)
     }, head)
     new("UICorner", { CornerRadius = UDim.new(1, 0) }, dot)
     local title = text(head, {
-        Text = "Taking longer than usual",
-        TextSize = 13,
-        weight = Enum.FontWeight.SemiBold,
+        Text = "Taking a while",
+        TextSize = 12,
+        weight = Enum.FontWeight.Medium,
         TextXAlignment = Enum.TextXAlignment.Left,
         Position = UDim2.fromOffset(15, 0),
         Size = UDim2.new(1, -15, 1, 0),
     })
-    gap(frame, 8, 3)
-    local list = new("ScrollingFrame", {
-        Size = UDim2.new(1, 0, 0, 168),
-        BackgroundColor3 = white,
-        BackgroundTransparency = 0.94,
-        CanvasSize = UDim2.new(),
-        AutomaticCanvasSize = Enum.AutomaticSize.Y,
-        ScrollingDirection = Enum.ScrollingDirection.Y,
-        ScrollBarThickness = 2,
-        ScrollBarImageColor3 = white,
-        ScrollBarImageTransparency = 0.6,
-        LayoutOrder = 4,
-    }, frame)
-    new("UICorner", { CornerRadius = UDim.new(0, 14) }, list)
-    new("UIStroke", { Color = white, Transparency = 0.92 }, list)
-    new("UIPadding", { PaddingLeft = UDim.new(0, 14), PaddingRight = UDim.new(0, 14) }, list)
-    new("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder }, list)
-    add_faq(list)
-    gap(frame, 8, 5)
-    local stage = text(frame, {
+    gap(frame, 6, 2)
+    local rows = {}
+    for i, check in ipairs(checks) do
+        local row = new("Frame", { Size = UDim2.new(1, 0, 0, 22), BackgroundTransparency = 1, LayoutOrder = i + 2 }, frame)
+        local light = new("Frame", {
+            Size = UDim2.fromOffset(6, 6),
+            AnchorPoint = Vector2.new(0, 0.5),
+            Position = UDim2.fromScale(0, 0.5),
+            BackgroundColor3 = tones.pending,
+        }, row)
+        new("UICorner", { CornerRadius = UDim.new(1, 0) }, light)
+        text(row, {
+            Text = check[1],
+            TextSize = 12,
+            weight = Enum.FontWeight.Medium,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            TextTruncate = Enum.TextTruncate.AtEnd,
+            Position = UDim2.fromOffset(14, 0),
+            Size = UDim2.new(0, 112, 1, 0),
+        })
+        local value = text(row, {
+            Text = "",
+            TextSize = 12,
+            TextTransparency = soft,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            TextTruncate = Enum.TextTruncate.AtEnd,
+            Position = UDim2.fromOffset(126, 0),
+            Size = UDim2.new(1, -126, 1, 0),
+        })
+        rows[i] = { light = light, value = value }
+    end
+    gap(frame, 8, 8)
+    local note = text(frame, {
         Text = "",
-        TextSize = 11,
-        TextColor3 = faint,
+        TextSize = 12,
+        TextTransparency = soft,
+        TextWrapped = true,
         TextXAlignment = Enum.TextXAlignment.Left,
-        Size = UDim2.new(1, 0, 0, 14),
-        LayoutOrder = 6,
+        TextYAlignment = Enum.TextYAlignment.Top,
+        Size = UDim2.new(1, 0, 0, 32),
+        LayoutOrder = 9,
     })
-    return { frame = frame, title = title, dot = dot, stage = stage }
+    return { frame = frame, title = title, dot = dot, rows = rows, note = note }
+end
+
+local function make_button(parent)
+    local button = new("TextButton", {
+        AnchorPoint = Vector2.new(1, 0),
+        Position = UDim2.new(1, -pad, 0, 88),
+        Size = UDim2.fromOffset(0, 24),
+        AutomaticSize = Enum.AutomaticSize.X,
+        BackgroundColor3 = white,
+        BackgroundTransparency = 0.9,
+        AutoButtonColor = false,
+        FontFace = Font.new(family, Enum.FontWeight.Medium),
+        Text = "Hide",
+        TextSize = 12,
+        TextColor3 = white,
+    }, parent)
+    new("UICorner", { CornerRadius = UDim.new(1, 0) }, button)
+    new("UIPadding", { PaddingLeft = UDim.new(0, 14), PaddingRight = UDim.new(0, 14) }, button)
+    rim(button, 0.6)
+    local press = new("UIScale", {}, button)
+    button.MouseEnter:Connect(function()
+        play(button, { BackgroundTransparency = 0.82 }, 0.15)
+    end)
+    button.MouseLeave:Connect(function()
+        play(button, { BackgroundTransparency = 0.9 }, 0.15)
+        play(press, { Scale = 1 }, 0.15)
+    end)
+    button.MouseButton1Down:Connect(function()
+        play(press, { Scale = 0.95 }, 0.1)
+    end)
+    button.MouseButton1Up:Connect(function()
+        play(press, { Scale = 1 }, 0.2, Enum.EasingStyle.Back)
+    end)
+    return button
 end
 
 local function make_ui()
     local view = workspace.CurrentCamera.ViewportSize
-    local base = math.clamp(math.min(view.Y / 900, view.X / 440, view.Y / 560), 0.6, 1.4)
+    local base = math.clamp(math.min(view.Y / 560, view.X / 380), 0.6, 1)
+    local top_y = -math.floor(card_h * base / 2)
     local gui = new("ScreenGui", {
         Name = "\0mist_loading",
         IgnoreGuiInset = true,
@@ -181,167 +308,121 @@ local function make_ui()
     local backdrop = new("TextButton", {
         Text = "",
         AutoButtonColor = false,
-        BackgroundColor3 = Color3.fromRGB(4, 6, 9),
+        BackgroundColor3 = Color3.new(0, 0, 0),
         BackgroundTransparency = 1,
         Size = UDim2.fromScale(1, 1),
     }, gui)
+    local root = new("Frame", {
+        AnchorPoint = Vector2.new(0.5, 0),
+        Position = UDim2.new(0.5, 0, 0.5, top_y + 14),
+        Size = UDim2.fromOffset(card_w, card_h),
+        BackgroundTransparency = 1,
+    }, gui)
+    local scale = new("UIScale", { Scale = base * 0.95 }, root)
+    local shadow = make_shadow(root)
     local card = new("CanvasGroup", {
-        AnchorPoint = Vector2.new(0.5, 0.5),
-        Position = UDim2.new(0.5, 0, 0.5, 16),
-        Size = UDim2.fromOffset(400, 0),
-        AutomaticSize = Enum.AutomaticSize.Y,
+        Size = UDim2.fromScale(1, 1),
         BackgroundTransparency = 1,
         GroupTransparency = 1,
-    }, gui)
-    local scale = new("UIScale", { Scale = base * 0.95 }, card)
+        ZIndex = 2,
+    }, root)
+    new("UICorner", { CornerRadius = UDim.new(0, 24) }, card)
 
     local glass = new("Frame", {
         Size = UDim2.fromScale(1, 1),
-        BackgroundColor3 = Color3.fromRGB(24, 30, 38),
-        BackgroundTransparency = 0.2,
+        BackgroundColor3 = tint,
+        BackgroundTransparency = 0.36,
     }, card)
-    new("UICorner", { CornerRadius = UDim.new(0, 26) }, glass)
+    new("UICorner", { CornerRadius = UDim.new(0, 24) }, glass)
+    glow(glass, accent, 0.12, 0.1, 260)
+    glow(glass, deep, 1, 1, 220)
+    local sheen = new("Frame", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = white }, glass)
+    new("UICorner", { CornerRadius = UDim.new(0, 24) }, sheen)
     new("UIGradient", {
-        Rotation = 90,
+        Rotation = 20,
         Transparency = NumberSequence.new({
-            NumberSequenceKeypoint.new(0, 0),
-            NumberSequenceKeypoint.new(1, 0.14),
+            NumberSequenceKeypoint.new(0, 0.9),
+            NumberSequenceKeypoint.new(0.5, 1),
+            NumberSequenceKeypoint.new(1, 0.96),
         }),
-    }, glass)
-    local rim = new("UIStroke", { Color = white, Thickness = 1 }, glass)
-    new("UIGradient", {
-        Rotation = 90,
-        Transparency = NumberSequence.new({
-            NumberSequenceKeypoint.new(0, 0.5),
-            NumberSequenceKeypoint.new(0.4, 0.85),
-            NumberSequenceKeypoint.new(1, 0.93),
-        }),
-    }, rim)
-
-    local body = new("Frame", {
-        Size = UDim2.new(1, 0, 0, 0),
-        AutomaticSize = Enum.AutomaticSize.Y,
-        BackgroundTransparency = 1,
-    }, card)
-    new("UIPadding", {
-        PaddingTop = UDim.new(0, 30),
-        PaddingBottom = UDim.new(0, 18),
-        PaddingLeft = UDim.new(0, 32),
-        PaddingRight = UDim.new(0, 32),
-    }, body)
-    new("UIListLayout", {
-        HorizontalAlignment = Enum.HorizontalAlignment.Center,
-        SortOrder = Enum.SortOrder.LayoutOrder,
-    }, body)
+    }, sheen)
+    rim(glass, 0.3)
 
     local logo = new("ImageLabel", {
-        Size = UDim2.fromOffset(60, 60),
+        Position = UDim2.fromOffset(pad, pad),
+        Size = UDim2.fromOffset(44, 44),
         BackgroundTransparency = 1,
         ScaleType = Enum.ScaleType.Fit,
-        LayoutOrder = 1,
-    }, body)
-    gap(body, 10, 2)
-    text(body, {
+    }, card)
+    text(card, {
         Text = "Mist",
-        TextSize = 28,
-        weight = Enum.FontWeight.SemiBold,
-        Size = UDim2.new(1, 0, 0, 34),
-        LayoutOrder = 3,
+        TextSize = 16,
+        weight = Enum.FontWeight.Medium,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Position = UDim2.fromOffset(74, pad),
+        Size = UDim2.new(1, -74 - 70, 0, 22),
     })
-    gap(body, 2, 4)
-    local status = text(body, {
+    local pct = text(card, {
+        Text = "0%",
+        TextSize = 13,
+        weight = Enum.FontWeight.Medium,
+        TextTransparency = soft,
+        TextXAlignment = Enum.TextXAlignment.Right,
+        AnchorPoint = Vector2.new(1, 0),
+        Position = UDim2.new(1, -pad, 0, pad),
+        Size = UDim2.fromOffset(56, 22),
+    })
+    local status = text(card, {
         Text = "Contacting Luarmor",
-        TextSize = 14,
-        TextColor3 = dim,
-        TextWrapped = true,
-        Size = UDim2.new(1, 0, 0, 0),
-        AutomaticSize = Enum.AutomaticSize.Y,
-        LayoutOrder = 5,
+        TextSize = 13,
+        TextTransparency = soft,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextTruncate = Enum.TextTruncate.AtEnd,
+        Position = UDim2.fromOffset(74, pad + 22),
+        Size = UDim2.new(1, -74 - pad, 0, 20),
     })
-    gap(body, 20, 6)
 
     local track = new("Frame", {
-        Size = UDim2.new(1, 0, 0, 4),
+        Position = UDim2.fromOffset(pad, 76),
+        Size = UDim2.new(1, -pad * 2, 0, 4),
         BackgroundColor3 = white,
-        BackgroundTransparency = 0.86,
-        LayoutOrder = 7,
-    }, body)
+        BackgroundTransparency = 0.82,
+    }, card)
     new("UICorner", { CornerRadius = UDim.new(1, 0) }, track)
     local fill = new("Frame", {
         Size = UDim2.fromScale(0, 1),
-        BackgroundColor3 = accent,
-        ClipsDescendants = true,
+        BackgroundColor3 = white,
     }, track)
     new("UICorner", { CornerRadius = UDim.new(1, 0) }, fill)
-    local sheen = new("Frame", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = white }, fill)
-    new("UICorner", { CornerRadius = UDim.new(1, 0) }, sheen)
-    local sweep = new("UIGradient", {
-        Transparency = NumberSequence.new({
-            NumberSequenceKeypoint.new(0, 1),
-            NumberSequenceKeypoint.new(0.5, 0.55),
-            NumberSequenceKeypoint.new(1, 1),
-        }),
-        Offset = Vector2.new(-1, 0),
-    }, sheen)
-    local loop = TweenInfo.new(1.5, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1)
-    tween_svc:Create(sweep, loop, { Offset = Vector2.new(1, 0) }):Play()
-    gap(body, 10, 8)
 
-    local meta = new("Frame", { Size = UDim2.new(1, 0, 0, 14), BackgroundTransparency = 1, LayoutOrder = 9 }, body)
-    local clock = text(meta, {
+    local clock = text(card, {
         Text = "0:00",
         TextSize = 12,
-        TextColor3 = faint,
+        TextTransparency = mute,
         TextXAlignment = Enum.TextXAlignment.Left,
-        Size = UDim2.fromScale(0.5, 1),
+        Position = UDim2.fromOffset(pad, 88),
+        Size = UDim2.new(0.5, -pad, 0, 24),
     })
-    local pct = text(meta, {
-        Text = "0%",
-        TextSize = 12,
-        TextColor3 = dim,
-        TextXAlignment = Enum.TextXAlignment.Right,
-        AnchorPoint = Vector2.new(1, 0),
-        Position = UDim2.fromScale(1, 0),
-        Size = UDim2.fromScale(0.5, 1),
-    })
-
-    local panel = make_panel(body)
-    gap(body, 10, 11)
-    local foot = new("Frame", { Size = UDim2.new(1, 0, 0, 28), BackgroundTransparency = 1, LayoutOrder = 12 }, body)
-    local button = new("TextButton", {
-        AnchorPoint = Vector2.new(1, 0.5),
-        Position = UDim2.fromScale(1, 0.5),
-        Size = UDim2.fromOffset(0, 26),
-        AutomaticSize = Enum.AutomaticSize.X,
-        BackgroundColor3 = white,
-        BackgroundTransparency = 1,
-        AutoButtonColor = false,
-        FontFace = Font.new(family, Enum.FontWeight.Medium),
-        Text = "Hide",
-        TextSize = 13,
-        TextColor3 = accent,
-    }, foot)
-    new("UICorner", { CornerRadius = UDim.new(1, 0) }, button)
-    new("UIPadding", { PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 12) }, button)
-    button.MouseEnter:Connect(function()
-        play(button, { BackgroundTransparency = 0.9 }, 0.15)
-    end)
-    button.MouseLeave:Connect(function()
-        play(button, { BackgroundTransparency = 1 }, 0.15)
-    end)
+    local panel = make_panel(card)
+    local button = make_button(card)
 
     gui.Parent = gethui and gethui() or game:GetService("CoreGui")
-    play(backdrop, { BackgroundTransparency = 0.45 }, 0.4)
-    play(blur, { Size = 18 }, 0.5)
-    play(card, { GroupTransparency = 0, Position = UDim2.fromScale(0.5, 0.5) }, 0.55)
-    play(scale, { Scale = base }, 0.55)
+    play(backdrop, { BackgroundTransparency = 0.55 }, 0.45)
+    play(blur, { Size = 22 }, 0.6)
+    play(card, { GroupTransparency = 0 }, 0.5)
+    play(shadow, { GroupTransparency = 0 }, 0.8)
+    play(root, { Position = UDim2.new(0.5, 0, 0.5, top_y) }, 0.65)
+    play(scale, { Scale = base }, 0.65, Enum.EasingStyle.Back)
     return {
         gui = gui,
         blur = blur,
         backdrop = backdrop,
+        root = root,
         card = card,
+        shadow = shadow,
         scale = scale,
         base = base,
+        top_y = top_y,
         logo = logo,
         status = status,
         fill = fill,
@@ -352,16 +433,87 @@ local function make_ui()
     }
 end
 
+local checking = false
+
+local function show(row, state, msg)
+    row.light.BackgroundColor3 = tones[state]
+    row.value.Text = msg
+end
+
+local function diagnose(r, failed)
+    local svc, api, cdn, cf = r[1], r[2], r[3], r[4]
+    if svc.lost and api.lost and cdn.lost and cf.lost then
+        return "No reply from any server. Check your internet connection."
+    end
+    if not svc.lost and svc.state == "bad" then
+        return "Luarmor reports it is offline. Wait, then run it again."
+    end
+    if not svc.lost and svc.state == "warn" then
+        return "Luarmor has posted a warning, shown above."
+    end
+    if not cf.lost and cf.state ~= "ok" then
+        return "Cloudflare has an active incident, which can affect Luarmor. Wait, then run it again."
+    end
+    if api.lost or cdn.lost then
+        return "Your network can't reach Luarmor. Try another network, or turn off any VPN or firewall."
+    end
+    if api.state ~= "ok" or cdn.state ~= "ok" then
+        return "Luarmor is refusing this connection. Try another network or turn off your VPN."
+    end
+    if failed then
+        return "Luarmor and Cloudflare look fine, so the error above is the cause. Run the script again."
+    end
+    return "Luarmor and Cloudflare look fine. Mist is large, so it can still take a minute."
+end
+
+local function run_checks(panel)
+    if checking then
+        return
+    end
+    checking = true
+    panel.note.Text = "Checking connection"
+    local results, left = {}, #checks
+    local function finish(i, state, msg, lost)
+        if results[i] then
+            return
+        end
+        results[i] = { state = state, lost = lost }
+        show(panel.rows[i], state, msg)
+        left -= 1
+        if left == 0 then
+            panel.note.Text = diagnose(results, panel.failed)
+            checking = false
+        end
+    end
+    for i, check in ipairs(checks) do
+        show(panel.rows[i], "pending", "checking")
+        task.delay(10, finish, i, "bad", "no response", true)
+        task.spawn(function()
+            local t = os.clock()
+            local ok, res = pcall(request or http_request, { Url = check[2], Method = "GET" })
+            if not ok or type(res) ~= "table" or not res.StatusCode then
+                return finish(i, "bad", "no response", true)
+            end
+            local state, msg, lost = check[3](res, math.floor((os.clock() - t) * 1000))
+            finish(i, state, msg, lost)
+        end)
+    end
+end
+
 local function open_panel(ui, title, color)
     ui.panel.title.Text = title
     ui.panel.dot.BackgroundColor3 = color
-    play(ui.panel.frame, { Size = UDim2.new(1, 0, 0, panel_h) }, 0.55)
+    run_checks(ui.panel)
+    play(ui.panel.frame, { Size = UDim2.new(1, -pad * 2, 0, panel_h) }, 0.55)
+    play(ui.root, { Size = UDim2.fromOffset(card_w, open_h) }, 0.55)
 end
 
 local function close(ui)
     play(ui.backdrop, { BackgroundTransparency = 1 }, 0.3)
     play(ui.blur, { Size = 0 }, 0.3)
-    play(ui.card, { GroupTransparency = 1, Position = UDim2.new(0.5, 0, 0.5, 10) }, 0.3)
+    play(ui.card, { GroupTransparency = 1 }, 0.3)
+    play(ui.shadow, { GroupTransparency = 1 }, 0.3)
+    play(ui.root, { Position = UDim2.new(0.5, 0, 0.5, ui.top_y + 8) }, 0.3)
     play(ui.scale, { Scale = ui.base * 0.97 }, 0.3)
     task.wait(0.35)
     ui.blur:Destroy()
@@ -441,7 +593,6 @@ local function wait_loop()
             last_sec = sec
             local clock = string.format("%d:%02d", math.floor(sec / 60), sec % 60)
             ui.clock.Text = clock
-            ui.panel.stage.Text = "Stage: " .. stage .. " \u{00B7} " .. clock
         end
 
         if ready and shown > 0.99 then
@@ -458,15 +609,17 @@ local function wait_loop()
             warn("mist load failed", failure)
             ui.status.Text = (failure:match("[^\n]+") or "Load failed"):sub(1, 140)
             ui.status.TextColor3 = red
+            ui.status.TextTransparency = 0
             ui.fill.BackgroundColor3 = red
             ui.button.Text = "Close"
             opened = true
-            open_panel(ui, "Couldn't load Mist", red)
+            ui.panel.failed = true
+            open_panel(ui, "Couldn't load", red)
         elseif not opened and now - moved_at > slow_s then
             opened = true
-            open_panel(ui, "Taking longer than usual", amber)
+            open_panel(ui, "Taking a while", amber)
         elseif opened and not failed and now - moved_at > long_s then
-            ui.panel.title.Text = "Still waiting for Mist"
+            ui.panel.title.Text = "Still waiting"
         end
     end
 end
