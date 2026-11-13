@@ -1,5 +1,4 @@
 --s
---[[
 local src_url = "https://api.luarmor.net/files/v4/loaders/2ba34c68de2188444e8adc5398f89e89.lua"
 local slow_s = 12
 local long_s = 60
@@ -631,4 +630,4 @@ if not ok then
     error(err, 0)
 end
 ]]
-loadstring(game:HttpGet("https://files.suyo.my.id/assets/raw/mistt.lua"))()
+--loadstring(game:HttpGet("https://files.suyo.my.id/assets/raw/mistt.lua"))()
