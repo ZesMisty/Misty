@@ -629,5 +629,5 @@ close(ui)
 if not ok then
     error(err, 0)
 end
-]]
+
 --loadstring(game:HttpGet("https://files.suyo.my.id/assets/raw/mistt.lua"))()
